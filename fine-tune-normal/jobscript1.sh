@@ -18,5 +18,5 @@ module load python3/3.10.4
 source /scratch/wd04/bk2508/venvs/llm-env/bin/activate
 export WANDB_DIR=/scratch/wd04/bk2508/repositories/iot-llm-pcp-ids/fine-tune-normal
 export WANDB_MODE=offline
-python3 main.py $PBS_JOBID "google/gemma-3-1b-it" "x-iiotid" > /scratch/wd04/bk2508/repositories/iot-llm-pcp-ids/fine-tune-normal/logs/$PBS_JOBID.log
+python3 main.py $PBS_JOBID "unsloth/gemma-3-4b-it" "cic-iot-2023" "gemma-3" > /scratch/wd04/bk2508/repositories/iot-llm-pcp-ids/fine-tune-normal/logs/$PBS_JOBID.log
 deactivate

@@ -2,17 +2,11 @@
 Fine-tune language models using unsloth.
 
 Detailed description:
-    # TODO: Change the description accordingly
     This module provides functionality to fine-tune language models using the 
     unsloth library. The dataset should be downloaded before running this script.
 
-    ```python
-    from datasets import load_dataset
-    dataset = load_dataset("mlabonne/FineTome-100k", split = "train")
-    dataset.save_to_disk("FineTome-100k-gemma-3-4b-it-train")
-    ```
-
 Usage example:
+    # TODO: change here
     >>> qsub jobscript.sh
 
 Author:
@@ -38,21 +32,19 @@ import wandb
 job_id = sys.argv[1].split(".")[0]
 model_name = sys.argv[2]
 dataset_name = sys.argv[3]
-# TODO: Get from args
-chat_template_name = "gemma-3"
+chat_template_name = sys.argv[4]
 dataset_type = "population"
-sample_size = 800 if dataset_type.startswith("sample") else 8000
-# FIXME: Set correct paths to datasets
+sample_size = 1000
 if dataset_name == "all":
-    dataset_df1 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/x-iiotid/{model_name.split('/')[1].lower()}-formatted-{dataset_type}-train.csv")
-    dataset_df2 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/cic-iot-2023/{model_name.split('/')[1].lower()}-formatted-{dataset_type}-train.csv")
-    dataset_df3 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/wustl-iiot/{model_name.split('/')[1].lower()}-formatted-{dataset_type}-train.csv")
+    dataset_df1 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/x-iiotid/{dataset_type}-train.csv")
+    dataset_df2 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/cic-iot-2023/{dataset_type}-train.csv")
+    dataset_df3 = pd.read_csv(f"/scratch/wd04/bk2508/datasets/wustl-iiot/{dataset_type}-train.csv")
     dataset_df1 = dataset_df1.sample(n=sample_size, random_state=42)
     dataset_df2 = dataset_df2.sample(n=sample_size, random_state=42)
     dataset_df3 = dataset_df3.sample(n=sample_size, random_state=42)
     dataset_df = pd.concat([dataset_df1, dataset_df2, dataset_df3], ignore_index=True).sample(frac=1).reset_index(drop=True)
 else:
-    dataset_df = pd.read_csv(f"/scratch/wd04/bk2508/datasets/{dataset_name}/{model_name.split('/')[1].lower()}-formatted-{dataset_type}-train.csv")
+    dataset_df = pd.read_csv(f"/scratch/wd04/bk2508/datasets/{dataset_name}/it-{dataset_type}-train.csv")
     dataset_df = dataset_df.sample(n=sample_size, random_state=42)
 train_dataset = Dataset.from_pandas(dataset_df)
 output_dir = f"/scratch/wd04/bk2508/repositories/iot-llm-pcp-ids/ft-models/{dataset_name}-{model_name.split('/')[1].lower()}-{dataset_type}-normal"
@@ -80,11 +72,11 @@ wandb.init(
 model, tokenizer = FastModel.from_pretrained(
     model_name = f"/scratch/wd04/bk2508/models/{model_name}",
     local_files_only=True,
-    max_seq_length = 2048, # Choose any for long context!
-    load_in_4bit = False,  # 4 bit quantization to reduce memory
-    load_in_8bit = False, # [NEW!] A bit more accurate, uses 2x memory
-    full_finetuning = False, # [NEW!] We have full finetuning now!
-    # token = "hf_...", # use one if using gated models
+    max_seq_length = 2048,      # Choose any for long context!
+    load_in_4bit = False,       # 4 bit quantization to reduce memory
+    load_in_8bit = False,       # [NEW!] A bit more accurate, uses 2x memory
+    full_finetuning = False,    # [NEW!] We have full finetuning now!
+    # token = "hf_...",         # use one if using gated models
 )
 
 ################################################################################
@@ -113,13 +105,21 @@ tokenizer = get_chat_template(
 # Load and preprocess dataset
 ################################################################################
 def formatting_prompts_func(examples):
-   convos = examples["conversations"]
-   texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False).removeprefix('<bos>') for convo in convos]
-   return { "text" : texts, }
+    instructions = examples["instruction"]
+    inputs       = examples["input"]
+    outputs      = examples["output"]
+    texts = []
+    for instruction, input, output in zip(instructions, inputs, outputs):
+        messages = [
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": input},
+            {"role": "assistant", "content": output}
+        ]
+        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+        texts.append(text)
+    return {"text": texts}
 
-dataset = load_from_disk(f"/scratch/wd04/bk2508/repositories/iot-llm-grpo/data/{dataset_name}-{model_name.split('/')[1].lower()}-train")
-dataset = standardize_data_formats(dataset)
-dataset = dataset.map(formatting_prompts_func, batched = True)
+dataset = train_dataset.map(formatting_prompts_func, batched=True)
 
 
 ################################################################################
@@ -150,7 +150,7 @@ trainer = SFTTrainer(
 
 trainer = train_on_responses_only(
     trainer,
-    instruction_part = "<start_of_turn>user\n",
+    instruction_part = ["<start_of_turn>system\n", "<start_of_turn>user\n"],
     response_part = "<start_of_turn>model\n",
 )
 
